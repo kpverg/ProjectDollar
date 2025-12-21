@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,22 @@ import {
   Switch,
   Alert,
 } from 'react-native';
+import { AppContext } from './AppContext';
 
 const Settings = ({ onBack }) => {
+  const {
+    darkMode,
+    setDarkMode,
+    dateFormat,
+    setDateFormat,
+    colors,
+    primaryColor,
+    setPrimaryColor,
+    colorPalettes,
+  } = useContext(AppContext);
   const [notifications, setNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
   const [twoFactor, setTwoFactor] = useState(false);
+  const [colorDropdownOpen, setColorDropdownOpen] = useState(false);
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -25,80 +36,298 @@ const Settings = ({ onBack }) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={[styles.container, { backgroundColor: colors.bg }]}
+    >
       <TouchableOpacity style={styles.backButton} onPress={onBack}>
-        <Text style={styles.backButtonText}>← Back</Text>
+        <Text style={[styles.backButtonText, { color: colors.primary }]}>
+          ← Back
+        </Text>
       </TouchableOpacity>
 
       <View style={styles.header}>
-        <Text style={styles.title}>Settings</Text>
+        <Text style={[styles.title, { color: colors.primary }]}>Settings</Text>
       </View>
 
       <View style={styles.content}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Preferences</Text>
+        <View style={[styles.section, { backgroundColor: colors.bgSecondary }]}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: colors.primary, backgroundColor: colors.bg },
+            ]}
+          >
+            Preferences
+          </Text>
 
-          <View style={styles.settingItem}>
+          <View
+            style={[styles.settingItem, { borderBottomColor: colors.border }]}
+          >
             <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Push Notifications</Text>
-              <Text style={styles.settingDescription}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>
+                Push Notifications
+              </Text>
+              <Text
+                style={[
+                  styles.settingDescription,
+                  { color: colors.textSecondary },
+                ]}
+              >
                 Receive portfolio updates
               </Text>
             </View>
             <Switch
               value={notifications}
               onValueChange={setNotifications}
-              trackColor={{ false: '#ddd', true: '#a8d5ff' }}
-              thumbColor={notifications ? '#1a73e8' : '#f0f0f0'}
+              trackColor={{ false: colors.border, true: '#a8d5ff' }}
+              thumbColor={notifications ? colors.primary : '#f0f0f0'}
             />
           </View>
 
-          <View style={styles.settingItem}>
+          <View
+            style={[styles.settingItem, { borderBottomColor: colors.border }]}
+          >
             <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Dark Mode</Text>
-              <Text style={styles.settingDescription}>Enable dark theme</Text>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>
+                Dark Mode
+              </Text>
+              <Text
+                style={[
+                  styles.settingDescription,
+                  { color: colors.textSecondary },
+                ]}
+              >
+                Enable dark theme
+              </Text>
             </View>
             <Switch
               value={darkMode}
               onValueChange={setDarkMode}
-              trackColor={{ false: '#ddd', true: '#a8d5ff' }}
-              thumbColor={darkMode ? '#1a73e8' : '#f0f0f0'}
+              trackColor={{ false: colors.border, true: '#a8d5ff' }}
+              thumbColor={darkMode ? colors.primary : '#f0f0f0'}
             />
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Security</Text>
+        <View style={[styles.section, { backgroundColor: colors.bgSecondary }]}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: colors.primary, backgroundColor: colors.bg },
+            ]}
+          >
+            Color Theme
+          </Text>
 
-          <View style={styles.settingItem}>
+          <TouchableOpacity
+            style={[
+              styles.dropdownButton,
+              {
+                backgroundColor: colors.bg,
+                borderColor: colors.border,
+                borderBottomColor: colorDropdownOpen
+                  ? colors.primary
+                  : colors.border,
+              },
+            ]}
+            onPress={() => setColorDropdownOpen(!colorDropdownOpen)}
+          >
+            <View style={styles.dropdownContent}>
+              <View
+                style={[
+                  styles.colorDot,
+                  { backgroundColor: colorPalettes[primaryColor] },
+                ]}
+              />
+              <Text style={[styles.dropdownText, { color: colors.text }]}>
+                {primaryColor.charAt(0).toUpperCase() + primaryColor.slice(1)}
+              </Text>
+            </View>
+            <Text style={[styles.dropdownArrow, { color: colors.primary }]}>
+              {colorDropdownOpen ? '▲' : '▼'}
+            </Text>
+          </TouchableOpacity>
+
+          {colorDropdownOpen && (
+            <View
+              style={[
+                styles.dropdownList,
+                { backgroundColor: colors.bg, borderColor: colors.border },
+              ]}
+            >
+              {Object.entries(colorPalettes).map(([key, hex]) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[
+                    styles.dropdownItem,
+                    {
+                      backgroundColor:
+                        primaryColor === key
+                          ? colors.bgSecondary
+                          : 'transparent',
+                      borderBottomColor: colors.border,
+                    },
+                  ]}
+                  onPress={() => {
+                    setPrimaryColor(key);
+                    setColorDropdownOpen(false);
+                  }}
+                >
+                  <View style={[styles.colorDot, { backgroundColor: hex }]} />
+                  <Text
+                    style={[
+                      styles.dropdownItemText,
+                      {
+                        color: colors.text,
+                        fontWeight: primaryColor === key ? '700' : '500',
+                      },
+                    ]}
+                  >
+                    {key.charAt(0).toUpperCase() + key.slice(1)}
+                  </Text>
+                  {primaryColor === key && (
+                    <Text style={[styles.checkmark, { color: colors.primary }]}>
+                      ✓
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.section, { backgroundColor: colors.bgSecondary }]}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: colors.primary, backgroundColor: colors.bg },
+            ]}
+          >
+            Date Format
+          </Text>
+
+          <TouchableOpacity
+            style={[
+              styles.dateFormatOption,
+              {
+                borderBottomColor: colors.border,
+                backgroundColor:
+                  dateFormat === 'DD-MM-YYYY' ? colors.bg : 'transparent',
+              },
+            ]}
+            onPress={() => setDateFormat('DD-MM-YYYY')}
+          >
+            <Text
+              style={[
+                styles.dateFormatText,
+                {
+                  color: colors.text,
+                  fontWeight: dateFormat === 'DD-MM-YYYY' ? '700' : '500',
+                },
+              ]}
+            >
+              DD-MM-YYYY
+            </Text>
+            {dateFormat === 'DD-MM-YYYY' && (
+              <Text style={{ color: colors.primary, fontSize: 18 }}>✓</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.dateFormatOption,
+              {
+                borderBottomColor: colors.border,
+                backgroundColor:
+                  dateFormat === 'YYYY-MM-DD' ? colors.bg : 'transparent',
+              },
+            ]}
+            onPress={() => setDateFormat('YYYY-MM-DD')}
+          >
+            <Text
+              style={[
+                styles.dateFormatText,
+                {
+                  color: colors.text,
+                  fontWeight: dateFormat === 'YYYY-MM-DD' ? '700' : '500',
+                },
+              ]}
+            >
+              YYYY-MM-DD
+            </Text>
+            {dateFormat === 'YYYY-MM-DD' && (
+              <Text style={{ color: colors.primary, fontSize: 18 }}>✓</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.section, { backgroundColor: colors.bgSecondary }]}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: colors.primary, backgroundColor: colors.bg },
+            ]}
+          >
+            Security
+          </Text>
+
+          <View
+            style={[styles.settingItem, { borderBottomColor: colors.border }]}
+          >
             <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Two-Factor Authentication</Text>
-              <Text style={styles.settingDescription}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>
+                Two-Factor Authentication
+              </Text>
+              <Text
+                style={[
+                  styles.settingDescription,
+                  { color: colors.textSecondary },
+                ]}
+              >
                 Extra security for your account
               </Text>
             </View>
             <Switch
               value={twoFactor}
               onValueChange={setTwoFactor}
-              trackColor={{ false: '#ddd', true: '#a8d5ff' }}
-              thumbColor={twoFactor ? '#1a73e8' : '#f0f0f0'}
+              trackColor={{ false: colors.border, true: '#a8d5ff' }}
+              thumbColor={twoFactor ? colors.primary : '#f0f0f0'}
             />
           </View>
 
-          <TouchableOpacity style={styles.settingButton}>
-            <Text style={styles.settingButtonText}>Change Password</Text>
+          <TouchableOpacity
+            style={[styles.settingButton, { borderBottomColor: colors.border }]}
+          >
+            <Text style={[styles.settingButtonText, { color: colors.primary }]}>
+              Change Password
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
+        <View style={[styles.section, { backgroundColor: colors.bgSecondary }]}>
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: colors.primary, backgroundColor: colors.bg },
+            ]}
+          >
+            Account
+          </Text>
 
-          <TouchableOpacity style={styles.settingButton}>
-            <Text style={styles.settingButtonText}>Edit Profile</Text>
+          <TouchableOpacity
+            style={[styles.settingButton, { borderBottomColor: colors.border }]}
+          >
+            <Text style={[styles.settingButtonText, { color: colors.primary }]}>
+              Edit Profile
+            </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.settingButton}>
-            <Text style={styles.settingButtonText}>Privacy Policy</Text>
+          <TouchableOpacity
+            style={[styles.settingButton, { borderBottomColor: colors.border }]}
+          >
+            <Text style={[styles.settingButtonText, { color: colors.primary }]}>
+              Privacy Policy
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -118,7 +347,6 @@ const Settings = ({ onBack }) => {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    backgroundColor: '#f8f9fa',
     paddingBottom: 20,
   },
   backButton: {
@@ -127,7 +355,6 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     fontSize: 16,
-    color: '#1a73e8',
     fontWeight: '600',
   },
   header: {
@@ -138,14 +365,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#1a73e8',
   },
   content: {
     paddingHorizontal: 20,
     gap: 15,
   },
   section: {
-    backgroundColor: '#fff',
     borderRadius: 12,
     overflow: 'hidden',
     shadowColor: '#000',
@@ -157,8 +382,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#1a73e8',
-    backgroundColor: '#f0f7ff',
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
@@ -169,7 +392,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
   },
   settingInfo: {
     flex: 1,
@@ -177,23 +399,98 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 4,
   },
   settingDescription: {
     fontSize: 12,
-    color: '#999',
   },
   settingButton: {
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
   },
   settingButtonText: {
     fontSize: 14,
-    color: '#1a73e8',
     fontWeight: '500',
+  },
+  dateFormatOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+  },
+  dateFormatText: {
+    fontSize: 14,
+  },
+  colorGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
+    justifyContent: 'space-between',
+  },
+  colorOption: {
+    width: '30%',
+    aspectRatio: 1,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginVertical: 12,
+  },
+  dropdownContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  colorDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+  },
+  dropdownText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  dropdownArrow: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dropdownList: {
+    borderWidth: 1,
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    gap: 12,
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  checkmark: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   dangerButton: {
     borderBottomWidth: 0,

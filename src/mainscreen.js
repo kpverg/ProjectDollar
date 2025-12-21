@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,16 @@ import {
   ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { AppContext } from './AppContext';
 import ViewPortfolio from './viewPortfolio';
 import BuildPortfolio from './buildPortfolio';
 import AddCapital from './addCapital';
 import Settings from './settings';
 
 const MainScreen = () => {
+  const { colors, getColors, primaryColor } = useContext(AppContext);
   const [currentScreen, setCurrentScreen] = useState('main');
+  const dynamicColors = getColors();
 
   if (currentScreen === 'portfolio') {
     return <ViewPortfolio onBack={() => setCurrentScreen('main')} />;
@@ -29,44 +32,72 @@ const MainScreen = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: dynamicColors.bg }]}>
       <View style={styles.header}>
-        <Text style={styles.title}>ProjectDollar</Text>
-        <Text style={styles.subtitle}>Portfolio Manager</Text>
+        <Text style={[styles.title, { color: dynamicColors.primary }]}>
+          ProjectDollar
+        </Text>
+        <Text style={[styles.subtitle, { color: dynamicColors.textSecondary }]}>
+          Portfolio Manager
+        </Text>
       </View>
 
       <View style={styles.mainContent}>
         <View style={styles.buttonsGrid}>
           <TouchableOpacity
-            style={styles.button}
+            style={[
+              styles.button,
+              { backgroundColor: dynamicColors.bgSecondary },
+            ]}
             onPress={() => setCurrentScreen('portfolio')}
           >
-            <Icon name="chart-line" size={32} color="#1a73e8" />
-            <Text style={styles.buttonText}>View</Text>
+            <Icon name="chart-line" size={32} color={dynamicColors.primary} />
+            <Text style={[styles.buttonText, { color: dynamicColors.primary }]}>
+              View
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.button}
+            style={[
+              styles.button,
+              { backgroundColor: dynamicColors.bgSecondary },
+            ]}
             onPress={() => setCurrentScreen('build')}
           >
-            <Icon name="briefcase-plus" size={32} color="#1a73e8" />
-            <Text style={styles.buttonText}>Build</Text>
+            <Icon
+              name="briefcase-plus"
+              size={32}
+              color={dynamicColors.primary}
+            />
+            <Text style={[styles.buttonText, { color: dynamicColors.primary }]}>
+              Build
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.button}
+            style={[
+              styles.button,
+              { backgroundColor: dynamicColors.bgSecondary },
+            ]}
             onPress={() => setCurrentScreen('capital')}
           >
-            <Icon name="cash-plus" size={32} color="#1a73e8" />
-            <Text style={styles.buttonText}>Add $</Text>
+            <Icon name="cash-plus" size={32} color={dynamicColors.primary} />
+            <Text style={[styles.buttonText, { color: dynamicColors.primary }]}>
+              Add $
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.button}
+            style={[
+              styles.button,
+              { backgroundColor: dynamicColors.bgSecondary },
+            ]}
             onPress={() => setCurrentScreen('settings')}
           >
-            <Icon name="cog" size={32} color="#1a73e8" />
-            <Text style={styles.buttonText}>Settings</Text>
+            <Icon name="cog" size={32} color={dynamicColors.primary} />
+            <Text style={[styles.buttonText, { color: dynamicColors.primary }]}>
+              Settings
+            </Text>
           </TouchableOpacity>
         </View>
       </View>

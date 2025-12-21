@@ -7,6 +7,7 @@
 
 import { StatusBar, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AppProvider } from './src/AppContext';
 import MainScreen from './src/mainscreen';
 
 function App() {
@@ -14,8 +15,10 @@ function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <MainScreen />
+      <AppProvider>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+        <MainScreen />
+      </AppProvider>
     </SafeAreaProvider>
   );
 }

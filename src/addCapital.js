@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,30 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
+import { AppContext } from './AppContext';
+import { getBalances, saveBalances } from './storage';
 
 const currencies = ['USD', 'EUR'];
 
+const formatDate = (dateStr, format) => {
+  if (format === 'DD-MM-YYYY') {
+    const [year, month, day] = dateStr.split('-');
+    return `${day}-${month}-${year}`;
+  }
+  return dateStr;
+};
+
+const parseDate = (displayStr, format) => {
+  if (format === 'DD-MM-YYYY') {
+    const [day, month, year] = displayStr.split('-');
+    return `${year}-${month}-${day}`;
+  }
+  return displayStr;
+};
+
 const AddCapital = ({ onBack }) => {
+  const { colors, dateFormat, getColors } = useContext(AppContext);
+  const dynamicColors = getColors();
   const [balances, setBalances] = useState({ USD: 0, EUR: 0 });
   const [showModal, setShowModal] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
@@ -23,6 +43,7 @@ const AddCapital = ({ onBack }) => {
   const [convertAmount, setConvertAmount] = useState('');
   const [convertFrom, setConvertFrom] = useState('USD');
   const [eurToUsd, setEurToUsd] = useState(1.08);
+  const [customRate, setCustomRate] = useState('');
   const [rateInfo, setRateInfo] = useState('');
 
   const formattedBalances = useMemo(
@@ -45,27 +66,54 @@ const AddCapital = ({ onBack }) => {
   const openConvertModal = () => setShowConvertModal(true);
   const closeConvertModal = () => setShowConvertModal(false);
 
-  useEffect(() => {
-    const fetchRate = async () => {
-      try {
-        const res = await fetch(
-          'https://api.exchangerate.host/latest?base=EUR&symbols=USD',
-        );
-        const data = await res.json();
-        const rate = Number(data?.rates?.USD);
-        if (!Number.isNaN(rate) && rate > 0) {
-          setEurToUsd(rate);
-          setRateInfo(`Live: 1 EUR = ${rate.toFixed(4)} USD`);
-        } else {
-          setRateInfo('Using fallback rate 1.08');
-        }
-      } catch (err) {
-        setRateInfo('Using fallback rate 1.08');
+  // Fetch exchange rate
+  const fetchExchangeRate = async () => {
+    try {
+      const res = await fetch('https://api.exchangerate-api.com/v4/latest/EUR');
+      const data = await res.json();
+      const rate = data?.rates?.USD;
+      if (rate && typeof rate === 'number' && rate > 0) {
+        setEurToUsd(rate);
+        setRateInfo(`Live: 1 EUR = ${rate.toFixed(4)} USD`);
+      } else {
+        setRateInfo('Fallback: 1.08');
+        setEurToUsd(1.08);
       }
-    };
+    } catch (err) {
+      console.log('Rate fetch error:', err);
+      setRateInfo('Fallback: 1.08');
+      setEurToUsd(1.08);
+    }
+  };
 
-    fetchRate();
+  // Load balances and fetch rate on app load
+  useEffect(() => {
+    (async () => {
+      const stored = await getBalances();
+      if (
+        stored &&
+        typeof stored.USD === 'number' &&
+        typeof stored.EUR === 'number'
+      ) {
+        setBalances(stored);
+      }
+    })();
+    fetchExchangeRate();
   }, []);
+
+  // Refresh rate when convert modal opens
+  useEffect(() => {
+    if (showConvertModal) {
+      fetchExchangeRate();
+      const interval = setInterval(fetchExchangeRate, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [showConvertModal]);
+
+  // Format date for display based on user's preference
+  const displayDate = useMemo(() => {
+    return formatDate(date, dateFormat);
+  }, [date, dateFormat]);
 
   const rateDisplay = useMemo(() => {
     const rate = eurToUsd || 1.08;
@@ -81,15 +129,17 @@ const AddCapital = ({ onBack }) => {
       return;
     }
 
-    setBalances(prev => ({
-      ...prev,
-      [currency]: parseFloat((prev[currency] + value).toFixed(2)),
-    }));
+    const nextBalances = {
+      ...balances,
+      [currency]: parseFloat((balances[currency] + value).toFixed(2)),
+    };
+    setBalances(nextBalances);
+    saveBalances(nextBalances);
 
     setHistory(prev => [
       {
         id: Date.now().toString(),
-        date,
+        date: formatDate(date, dateFormat), // Store formatted date for display
         currency,
         amount: value,
       },
@@ -116,54 +166,108 @@ const AddCapital = ({ onBack }) => {
       return;
     }
 
-    const rate = eurToUsd || 1.08;
+    // Use custom rate if provided, otherwise use live rate
+    const rate = customRate ? parseFloat(customRate) : eurToUsd || 1.08;
+    if (!rate || rate <= 0) {
+      return;
+    }
+
     const converted = from === 'USD' ? value / rate : value * rate;
 
-    setBalances(prev => ({
-      ...prev,
-      [from]: parseFloat((prev[from] - value).toFixed(2)),
-      [to]: parseFloat((prev[to] + converted).toFixed(2)),
-    }));
+    const nextBalances = {
+      ...balances,
+      [from]: parseFloat((balances[from] - value).toFixed(2)),
+      [to]: parseFloat((balances[to] + converted).toFixed(2)),
+    };
+    setBalances(nextBalances);
+    saveBalances(nextBalances);
 
     setConvertAmount('');
+    setCustomRate('');
     setConvertFrom('USD');
     setShowConvertModal(false);
   };
 
+  const handleSwapCurrency = () => {
+    setConvertFrom(convertFrom === 'USD' ? 'EUR' : 'USD');
+  };
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={[
+        styles.container,
+        { backgroundColor: dynamicColors.bg },
+      ]}
+    >
       <TouchableOpacity style={styles.backButton} onPress={onBack}>
-        <Text style={styles.backButtonText}>← Back</Text>
+        <Text style={[styles.backButtonText, { color: dynamicColors.primary }]}>
+          ← Back
+        </Text>
       </TouchableOpacity>
 
       <View style={styles.header}>
-        <Text style={styles.title}>Add Capitals</Text>
-        <Text style={styles.subtitle}>Deposit funds to your account</Text>
+        <Text style={[styles.title, { color: dynamicColors.primary }]}>
+          Add Capitals
+        </Text>
+        <Text style={[styles.subtitle, { color: dynamicColors.textSecondary }]}>
+          Deposit funds to your account
+        </Text>
       </View>
 
       <View style={styles.content}>
-        <View style={styles.card}>
-          <Text style={styles.label}>Current Balances</Text>
+        <View
+          style={[styles.card, { backgroundColor: dynamicColors.bgSecondary }]}
+        >
+          <Text style={[styles.label, { color: dynamicColors.textSecondary }]}>
+            Current Balances
+          </Text>
           <View style={styles.balanceRow}>
-            <Text style={styles.balanceLabel}>USD</Text>
-            <Text style={styles.balance}>{formattedBalances.USD}</Text>
+            <Text style={[styles.balanceLabel, { color: dynamicColors.text }]}>
+              USD
+            </Text>
+            <Text style={[styles.balance, { color: dynamicColors.primary }]}>
+              {formattedBalances.USD}
+            </Text>
           </View>
-          <View style={styles.separator} />
+          <View
+            style={[
+              styles.separator,
+              { backgroundColor: dynamicColors.border },
+            ]}
+          />
           <View style={styles.balanceRow}>
-            <Text style={styles.balanceLabel}>EUR</Text>
-            <Text style={styles.balance}>{formattedBalances.EUR}</Text>
+            <Text style={[styles.balanceLabel, { color: dynamicColors.text }]}>
+              EUR
+            </Text>
+            <Text style={[styles.balance, { color: dynamicColors.primary }]}>
+              {formattedBalances.EUR}
+            </Text>
           </View>
         </View>
 
-        <View style={styles.formCard}>
-          <Text style={styles.label}>Deposit Funds</Text>
+        <View
+          style={[
+            styles.formCard,
+            { backgroundColor: dynamicColors.bgSecondary },
+          ]}
+        >
+          <Text style={[styles.label, { color: dynamicColors.textSecondary }]}>
+            Deposit Funds
+          </Text>
           <TouchableOpacity style={styles.depositButton} onPress={openModal}>
             <Text style={styles.depositButtonText}>Deposit Funds</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.formCard}>
-          <Text style={styles.label}>Convert Currency</Text>
+        <View
+          style={[
+            styles.formCard,
+            { backgroundColor: dynamicColors.bgSecondary },
+          ]}
+        >
+          <Text style={[styles.label, { color: dynamicColors.textSecondary }]}>
+            Convert Currency
+          </Text>
 
           <TouchableOpacity
             style={[styles.depositButton, styles.convertButton]}
@@ -173,18 +277,54 @@ const AddCapital = ({ onBack }) => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.historyCard}>
-          <Text style={styles.historyTitle}>Deposit History</Text>
+        <View
+          style={[
+            styles.historyCard,
+            { backgroundColor: dynamicColors.bgSecondary },
+          ]}
+        >
+          <Text style={[styles.historyTitle, { color: dynamicColors.text }]}>
+            Deposit History
+          </Text>
           {history.length === 0 ? (
-            <Text style={styles.emptyHistory}>No deposits yet</Text>
+            <Text
+              style={[
+                styles.emptyHistory,
+                { color: dynamicColors.textSecondary },
+              ]}
+            >
+              No deposits yet
+            </Text>
           ) : (
             history.map(entry => (
-              <View key={entry.id} style={styles.historyRow}>
+              <View
+                key={entry.id}
+                style={[
+                  styles.historyRow,
+                  { borderBottomColor: dynamicColors.border },
+                ]}
+              >
                 <View style={styles.historyLeft}>
-                  <Text style={styles.historyDate}>{entry.date}</Text>
-                  <Text style={styles.historyCurrency}>{entry.currency}</Text>
+                  <Text
+                    style={[styles.historyDate, { color: dynamicColors.text }]}
+                  >
+                    {entry.date}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.historyCurrency,
+                      { color: dynamicColors.textSecondary },
+                    ]}
+                  >
+                    {entry.currency}
+                  </Text>
                 </View>
-                <Text style={styles.historyAmount}>
+                <Text
+                  style={[
+                    styles.historyAmount,
+                    { color: dynamicColors.primary },
+                  ]}
+                >
                   {entry.currency === 'USD' ? '$' : '€'}
                   {entry.amount.toFixed(2)}
                 </Text>
@@ -200,45 +340,100 @@ const AddCapital = ({ onBack }) => {
         animationType="slide"
         onRequestClose={closeModal}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>New Deposit</Text>
+        <View
+          style={[
+            styles.modalBackdrop,
+            { backgroundColor: dynamicColors.shadow },
+          ]}
+        >
+          <View
+            style={[
+              styles.modalCard,
+              { backgroundColor: dynamicColors.bgSecondary },
+            ]}
+          >
+            <Text style={[styles.modalTitle, { color: dynamicColors.primary }]}>
+              New Deposit
+            </Text>
 
-            <Text style={styles.fieldLabel}>Date</Text>
+            <Text style={[styles.fieldLabel, { color: dynamicColors.text }]}>
+              Date
+            </Text>
             <TextInput
-              style={styles.input}
-              placeholder="DD-MM-YYYY"
-              value={date}
-              onChangeText={setDate}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: dynamicColors.bg,
+                  color: dynamicColors.text,
+                  borderColor: dynamicColors.border,
+                },
+              ]}
+              placeholder={dateFormat}
+              value={displayDate}
+              onChangeText={text => {
+                const parsed = parseDate(text, dateFormat);
+                setDate(parsed);
+              }}
+              placeholderTextColor={dynamicColors.textSecondary}
             />
 
-            <Text style={styles.fieldLabel}>Amount</Text>
-            <View style={styles.inputContainer}>
-              <Text style={styles.currencySymbol}>
+            <Text style={[styles.fieldLabel, { color: dynamicColors.text }]}>
+              Amount
+            </Text>
+            <View
+              style={[
+                styles.inputContainer,
+                { borderColor: dynamicColors.border },
+              ]}
+            >
+              <Text
+                style={[styles.currencySymbol, { color: dynamicColors.text }]}
+              >
                 {currency === 'USD' ? '$' : '€'}
               </Text>
               <TextInput
-                style={styles.amountInput}
+                style={[
+                  styles.amountInput,
+                  {
+                    backgroundColor: dynamicColors.bg,
+                    color: dynamicColors.text,
+                  },
+                ]}
                 placeholder="0.00"
                 value={amount}
                 onChangeText={setAmount}
                 keyboardType="decimal-pad"
-                placeholderTextColor="#ccc"
+                placeholderTextColor={dynamicColors.textSecondary}
               />
             </View>
 
-            <Text style={styles.fieldLabel}>Currency</Text>
+            <Text style={[styles.fieldLabel, { color: dynamicColors.text }]}>
+              Currency
+            </Text>
             <View style={styles.currencyChips}>
               {currencies.map(code => {
                 const active = currency === code;
                 return (
                   <TouchableOpacity
                     key={code}
-                    style={[styles.chip, active && styles.chipActive]}
+                    style={[
+                      styles.chip,
+                      active && styles.chipActive,
+                      {
+                        backgroundColor: active
+                          ? dynamicColors.primary
+                          : dynamicColors.bg,
+                        borderColor: dynamicColors.border,
+                      },
+                    ]}
                     onPress={() => setCurrency(code)}
                   >
                     <Text
-                      style={[styles.chipText, active && styles.chipTextActive]}
+                      style={[
+                        styles.chipText,
+                        active && styles.chipTextActive,
+                        { color: active ? '#fff' : dynamicColors.text },
+                      ]}
                     >
                       {code}
                     </Text>
@@ -248,10 +443,29 @@ const AddCapital = ({ onBack }) => {
             </View>
 
             <View style={styles.modalActions}>
-              <Pressable style={styles.secondaryButton} onPress={closeModal}>
-                <Text style={styles.secondaryText}>Cancel</Text>
+              <Pressable
+                style={[
+                  styles.secondaryButton,
+                  {
+                    backgroundColor: dynamicColors.bg,
+                    borderColor: dynamicColors.border,
+                  },
+                ]}
+                onPress={closeModal}
+              >
+                <Text
+                  style={[styles.secondaryText, { color: dynamicColors.text }]}
+                >
+                  Cancel
+                </Text>
               </Pressable>
-              <Pressable style={styles.primaryButton} onPress={handleSubmit}>
+              <Pressable
+                style={[
+                  styles.primaryButton,
+                  { backgroundColor: dynamicColors.primary },
+                ]}
+                onPress={handleSubmit}
+              >
                 <Text style={styles.primaryText}>Add</Text>
               </Pressable>
             </View>
@@ -265,22 +479,49 @@ const AddCapital = ({ onBack }) => {
         animationType="slide"
         onRequestClose={closeConvertModal}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Convert Currency</Text>
+        <View
+          style={[
+            styles.modalBackdrop,
+            { backgroundColor: dynamicColors.shadow },
+          ]}
+        >
+          <View
+            style={[
+              styles.modalCard,
+              { backgroundColor: dynamicColors.bgSecondary },
+            ]}
+          >
+            <Text style={[styles.modalTitle, { color: dynamicColors.primary }]}>
+              Convert Currency
+            </Text>
 
-            <Text style={styles.fieldLabel}>From</Text>
+            <Text style={[styles.fieldLabel, { color: dynamicColors.text }]}>
+              From
+            </Text>
             <View style={styles.currencyChips}>
               {currencies.map(code => {
                 const active = convertFrom === code;
                 return (
                   <TouchableOpacity
                     key={code}
-                    style={[styles.chip, active && styles.chipActive]}
+                    style={[
+                      styles.chip,
+                      active && styles.chipActive,
+                      {
+                        backgroundColor: active
+                          ? dynamicColors.primary
+                          : dynamicColors.bg,
+                        borderColor: dynamicColors.border,
+                      },
+                    ]}
                     onPress={() => setConvertFrom(code)}
                   >
                     <Text
-                      style={[styles.chipText, active && styles.chipTextActive]}
+                      style={[
+                        styles.chipText,
+                        active && styles.chipTextActive,
+                        { color: active ? '#fff' : dynamicColors.text },
+                      ]}
                     >
                       {code}
                     </Text>
@@ -289,28 +530,113 @@ const AddCapital = ({ onBack }) => {
               })}
             </View>
 
-            <Text style={styles.fieldLabel}>Amount</Text>
+            <Text style={[styles.fieldLabel, { color: dynamicColors.text }]}>
+              Available Balance
+            </Text>
+            <Text
+              style={[styles.balanceInfo, { color: dynamicColors.primary }]}
+            >
+              {convertFrom === 'USD' ? '$' : '€'}
+              {balances[convertFrom].toFixed(2)}
+            </Text>
+
+            <Text style={[styles.fieldLabel, { color: dynamicColors.text }]}>
+              Amount
+            </Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  backgroundColor: dynamicColors.bg,
+                  color: dynamicColors.text,
+                  borderColor: dynamicColors.border,
+                },
+              ]}
               placeholder="0.00"
               value={convertAmount}
               onChangeText={setConvertAmount}
               keyboardType="decimal-pad"
-              placeholderTextColor="#ccc"
+              placeholderTextColor={dynamicColors.textSecondary}
             />
 
-            <Text style={styles.fieldLabel}>Rate</Text>
-            <Text style={styles.rateText}>{rateDisplay}</Text>
-            {!!rateInfo && <Text style={styles.rateSub}>{rateInfo}</Text>}
+            <View style={styles.rateContainer}>
+              <View style={styles.rateDisplaySection}>
+                <Text
+                  style={[styles.fieldLabel, { color: dynamicColors.text }]}
+                >
+                  Rate (1 {convertFrom} →)
+                </Text>
+                <Text
+                  style={[styles.rateText, { color: dynamicColors.primary }]}
+                >
+                  {rateDisplay}
+                </Text>
+                {!!rateInfo && (
+                  <Text
+                    style={[
+                      styles.rateSub,
+                      { color: dynamicColors.textSecondary },
+                    ]}
+                  >
+                    {rateInfo}
+                  </Text>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.swapButton,
+                  { backgroundColor: dynamicColors.primary },
+                ]}
+                onPress={handleSwapCurrency}
+              >
+                <Text style={styles.swapButtonText}>⇅</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.fieldLabel, { color: dynamicColors.text }]}>
+              Custom Rate (optional)
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: dynamicColors.bg,
+                  color: dynamicColors.text,
+                  borderColor: dynamicColors.border,
+                },
+              ]}
+              placeholder={eurToUsd.toFixed(4)}
+              value={customRate}
+              onChangeText={setCustomRate}
+              keyboardType="decimal-pad"
+              placeholderTextColor={dynamicColors.textSecondary}
+            />
 
             <View style={styles.modalActions}>
               <Pressable
-                style={styles.secondaryButton}
+                style={[
+                  styles.secondaryButton,
+                  {
+                    backgroundColor: dynamicColors.bg,
+                    borderColor: dynamicColors.border,
+                  },
+                ]}
                 onPress={closeConvertModal}
               >
-                <Text style={styles.secondaryText}>Cancel</Text>
+                <Text
+                  style={[styles.secondaryText, { color: dynamicColors.text }]}
+                >
+                  Cancel
+                </Text>
               </Pressable>
-              <Pressable style={styles.primaryButton} onPress={handleConvert}>
+              <Pressable
+                style={[
+                  styles.primaryButton,
+                  { backgroundColor: dynamicColors.primary },
+                ]}
+                onPress={handleConvert}
+              >
                 <Text style={styles.primaryText}>Convert</Text>
               </Pressable>
             </View>
@@ -551,7 +877,8 @@ const styles = StyleSheet.create({
     color: '#1a73e8',
   },
   rateText: {
-    fontSize: 12,
+    fontSize: 16,
+    fontWeight: '600',
     color: '#666',
     marginBottom: 4,
   },
@@ -559,6 +886,37 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#999',
     marginBottom: 4,
+  },
+  balanceInfo: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  rateContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 6,
+  },
+  rateDisplaySection: {
+    flex: 1,
+  },
+  swapButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  swapButtonText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   modalActions: {
     flexDirection: 'row',
