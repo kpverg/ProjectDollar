@@ -16,24 +16,6 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const ALPHA_VANTAGE_API_KEY = 'BEU3SEYCT8C01J96';
 
-// Hardcoded ETF + stock database as fallback
-const SYMBOL_DATABASE = {
-  JEPQ: 'JPMorgan Equity Premium Income ETF',
-  JEPG: 'JPMorgan Equity Premium Income ETF - Global',
-  JEPI: 'JPMorgan Equity Premium Income ETF',
-  JEPX: 'JPMorgan Equity Premium Income ETF eXtra',
-  AAPL: 'Apple Inc.',
-  MSFT: 'Microsoft Corporation',
-  GOOGL: 'Alphabet Inc.',
-  AMZN: 'Amazon.com Inc.',
-  TSLA: 'Tesla Inc.',
-  META: 'Meta Platforms Inc.',
-  NFLX: 'Netflix Inc.',
-  JPM: 'JPMorgan Chase & Co.',
-  XOM: 'Exxon Mobil Corporation',
-  JNJ: 'Johnson & Johnson',
-};
-
 const formatDate = (dateStr, format) => {
   if (format === 'DD-MM-YYYY') {
     const [year, month, day] = dateStr.split('-');
@@ -72,6 +54,8 @@ const BuildPortfolio = ({ onBack }) => {
   const [infoError, setInfoError] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
+  const [realtimePrice, setRealtimePrice] = useState('');
+  const [loadingPrice, setLoadingPrice] = useState(false);
   const lastTapRef = useRef({});
 
   useEffect(() => {
@@ -81,10 +65,9 @@ const BuildPortfolio = ({ onBack }) => {
     })();
   }, []);
 
-  // 🔍 Manual lookup for company name (no autocomplete)
+  // 🔍 Manual lookup for company name
   const lookupCompany = async () => {
     if (!assetSymbol) return;
-
     setLoadingInfo(true);
     setInfoError('');
     setAssetName('');
@@ -92,68 +75,92 @@ const BuildPortfolio = ({ onBack }) => {
 
     const keyword = assetSymbol.trim().toUpperCase();
 
-    // First try exact symbol via OVERVIEW (often works for ETFs)
-    try {
-      const ovUrl = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${keyword}&apikey=${ALPHA_VANTAGE_API_KEY}`;
-      const ovRes = await axios.get(ovUrl);
-      const nameOV = ovRes.data?.Name;
-      if (nameOV) {
-        setAssetName(nameOV);
-        setSearchResults([{ symbol: keyword, name: nameOV }]);
-        setShowResults(true);
+    // ISIN lookup
+    if (keyword.length === 12) {
+      try {
+        const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${keyword}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+        const res = await axios.get(url);
+        const matches = res.data?.bestMatches;
+        if (Array.isArray(matches) && matches.length > 0) {
+          const isinResults = matches.filter(
+            m => (m['7. isin'] || '').toUpperCase() === keyword,
+          );
+          if (isinResults.length > 0) {
+            const results = isinResults.map(m => ({
+              symbol: m['1. symbol'],
+              name: m['2. name'],
+              region: m['4. region'],
+              currency: m['8. currency'],
+              isin: m['7. isin'],
+            }));
+            setSearchResults(results);
+            setShowResults(true);
+            setAssetSymbol(results[0].symbol);
+            setAssetName(results[0].name);
+          } else setInfoError('ISIN not found. Please verify the ISIN code.');
+        } else setInfoError('ISIN not found. Please verify the ISIN code.');
+      } catch (err) {
+        console.error('ISIN lookup failed:', err);
+        setInfoError('ISIN lookup failed. Please try again.');
+      } finally {
         setLoadingInfo(false);
-        return;
       }
-    } catch (err) {
-      // ignore and fall back to search
+      return;
     }
 
-    // Fall back to SYMBOL_SEARCH by keyword
-    try {
-      const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${keyword}&apikey=${ALPHA_VANTAGE_API_KEY}`;
-      const res = await axios.get(url);
-      const matches = res.data?.bestMatches;
-
-      if (Array.isArray(matches) && matches.length > 0) {
-        const results = matches.map(m => ({
-          symbol: m['1. symbol'],
-          name: m['2. name'],
-          region: m['4. region'],
-          currency: m['8. currency'],
-        }));
-        setSearchResults(results);
-        setShowResults(true);
-        const exact = results.find(r => r.symbol === keyword);
-        if (exact) setAssetName(exact.name);
-      } else {
-        // Fallback to hardcoded database
-        if (SYMBOL_DATABASE[keyword]) {
-          const name = SYMBOL_DATABASE[keyword];
-          setAssetName(name);
-          setSearchResults([{ symbol: keyword, name }]);
+    // Symbol lookup (up to 5 chars)
+    if (keyword.length <= 5) {
+      try {
+        const ovUrl = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${keyword}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+        const ovRes = await axios.get(ovUrl);
+        const nameOV = ovRes.data?.Name;
+        if (nameOV) {
+          setAssetName(nameOV);
+          setSearchResults([{ symbol: keyword, name: nameOV }]);
           setShowResults(true);
-        } else {
+          setLoadingInfo(false);
+          return;
+        }
+      } catch (err) {}
+      try {
+        const url = `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${keyword}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+        const res = await axios.get(url);
+        const matches = res.data?.bestMatches;
+        if (Array.isArray(matches) && matches.length > 0) {
+          const exactMatches = matches.filter(m => m['1. symbol'] === keyword);
+          if (exactMatches.length > 0) {
+            const results = exactMatches.map(m => ({
+              symbol: m['1. symbol'],
+              name: m['2. name'],
+              region: m['4. region'],
+              currency: m['8. currency'],
+            }));
+            setSearchResults(results);
+            setShowResults(true);
+            setAssetName(results[0].name);
+          } else
+            setInfoError(
+              'Symbol not found. You can still proceed without a company name.',
+            );
+        } else
           setInfoError(
             'Symbol not found. You can still proceed without a company name.',
           );
-        }
-      }
-    } catch (err) {
-      console.error('Alpha Vantage lookup failed:', err);
-      // Fallback on error
-      if (SYMBOL_DATABASE[keyword]) {
-        const name = SYMBOL_DATABASE[keyword];
-        setAssetName(name);
-        setSearchResults([{ symbol: keyword, name }]);
-        setShowResults(true);
-      } else {
+      } catch (err) {
+        console.error('Alpha Vantage lookup failed:', err);
         setInfoError(
           'Lookup failed. You can still proceed without a company name.',
         );
+      } finally {
+        setLoadingInfo(false);
       }
-    } finally {
-      setLoadingInfo(false);
+      return;
     }
+
+    setInfoError(
+      'Please enter a stock symbol (up to 5 letters) or ISIN code (12 characters).',
+    );
+    setLoadingInfo(false);
   };
 
   const selectSearchResult = result => {
@@ -162,14 +169,32 @@ const BuildPortfolio = ({ onBack }) => {
     setShowResults(false);
   };
 
+  // Fetch real-time price
+  const fetchRealtimePrice = async () => {
+    if (!assetSymbol) return;
+    setLoadingPrice(true);
+    try {
+      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${assetSymbol.toUpperCase()}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+      const res = await axios.get(url);
+      const price = parseFloat(res.data['Global Quote']?.['05. price']);
+      if (price && !isNaN(price)) {
+        setRealtimePrice(price.toString());
+        setAssetPrice(price.toString());
+      } else Alert.alert('Error', 'Unable to fetch real-time price.');
+    } catch (err) {
+      console.error('Fetch price failed:', err);
+      Alert.alert('Error', 'Failed to fetch real-time price.');
+    } finally {
+      setLoadingPrice(false);
+    }
+  };
+
   const addAsset = async () => {
     if (!assetSymbol || !assetPrice || !assetQuantity) return;
-
     const totalValue = (
       parseFloat(assetPrice) * parseFloat(assetQuantity)
     ).toFixed(2);
 
-    // Fetch logo via Alpha Vantage COMPANY_OVERVIEW
     let logoUrl = '';
     try {
       const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${assetSymbol.toUpperCase()}&apikey=${ALPHA_VANTAGE_API_KEY}`;
@@ -186,22 +211,18 @@ const BuildPortfolio = ({ onBack }) => {
       quantity: assetQuantity,
       totalValue,
       purchaseDate: formatDate(purchaseDate, dateFormat),
-      logoUrl: logoUrl,
+      logoUrl,
     };
 
     let nextAssets;
     if (editingIndex !== null) {
-      // Update existing asset
       nextAssets = [...assets];
       nextAssets[editingIndex] = newAsset;
       setEditingIndex(null);
-    } else {
-      // Add new asset
-      nextAssets = [...assets, newAsset];
-    }
+    } else nextAssets = [...assets, newAsset];
 
     setAssets(nextAssets);
-    setContextAssets(nextAssets); // Sync with context
+    setContextAssets(nextAssets);
     saveAssets(nextAssets);
 
     setAssetSymbol('');
@@ -209,6 +230,7 @@ const BuildPortfolio = ({ onBack }) => {
     setAssetPrice('');
     setAssetQuantity('');
     setPurchaseDate(new Date().toISOString().slice(0, 10));
+    setRealtimePrice('');
     setFormOpen(false);
   };
 
@@ -237,26 +259,20 @@ const BuildPortfolio = ({ onBack }) => {
     setAssetPrice('');
     setAssetQuantity('');
     setPurchaseDate(new Date().toISOString().slice(0, 10));
+    setRealtimePrice('');
     setFormOpen(false);
   };
 
-  // Double-tap to edit, long-press to delete
   const handleAssetPress = index => {
     const now = Date.now();
     const lastTap = lastTapRef.current[index] || 0;
-
     if (now - lastTap < 300) {
-      // Double tap - edit
       startEditAsset(index);
       lastTapRef.current[index] = 0;
-    } else {
-      // Single tap - show hint
-      lastTapRef.current[index] = now;
-    }
+    } else lastTapRef.current[index] = now;
   };
 
   const handleAssetLongPress = index => {
-    // Long press - delete via native alert
     const asset = assets[index];
     Alert.alert(
       'Delete Asset',
@@ -285,13 +301,9 @@ const BuildPortfolio = ({ onBack }) => {
 
       <TouchableOpacity
         style={[styles.toggle, { borderColor: colors.border }]}
-        onPress={() => {
-          if (editingIndex !== null) {
-            cancelEdit();
-          } else {
-            setFormOpen(!formOpen);
-          }
-        }}
+        onPress={() =>
+          editingIndex !== null ? cancelEdit() : setFormOpen(!formOpen)
+        }
       >
         <Text style={{ color: colors.primary }}>
           {editingIndex !== null ? '✕ Cancel Edit' : '➕ Add New Asset'}
@@ -315,6 +327,7 @@ const BuildPortfolio = ({ onBack }) => {
           >
             {editingIndex !== null ? '✏️ Edit Asset' : '➕ Add New Asset'}
           </Text>
+
           <Text style={{ color: colors.textSecondary }}>Stock Symbol</Text>
           <View style={styles.inputRow}>
             <TextInput
@@ -330,8 +343,6 @@ const BuildPortfolio = ({ onBack }) => {
             <TouchableOpacity
               style={styles.inputIconButton}
               onPress={lookupCompany}
-              accessibilityRole="button"
-              accessibilityLabel="Lookup company name"
             >
               <Icon name="magnify" size={22} color={colors.primary} />
             </TouchableOpacity>
@@ -340,18 +351,12 @@ const BuildPortfolio = ({ onBack }) => {
           {loadingInfo && (
             <ActivityIndicator size="small" color={colors.primary} />
           )}
-
           {infoError ? <Text style={{ color: 'red' }}>{infoError}</Text> : null}
-
           {assetName ? (
-            <Text
-              style={{ marginTop: 6, color: colors.textSecondary }}
-              numberOfLines={1}
-            >
+            <Text style={{ marginTop: 6, color: colors.textSecondary }}>
               Company: {assetName}
             </Text>
           ) : null}
-
           {showResults && searchResults.length > 0 && (
             <View
               style={[
@@ -394,6 +399,30 @@ const BuildPortfolio = ({ onBack }) => {
             value={assetPrice}
             onChangeText={setAssetPrice}
           />
+
+          {/* Real-Time Price Button */}
+          {loadingPrice ? (
+            <ActivityIndicator
+              size="small"
+              color={colors.primary}
+              style={{ marginTop: 6 }}
+            />
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.button,
+                { backgroundColor: '#4caf50', marginTop: 6 },
+              ]}
+              onPress={fetchRealtimePrice}
+            >
+              <Text style={{ color: '#fff' }}>Fetch Real-Time Price</Text>
+            </TouchableOpacity>
+          )}
+          {realtimePrice ? (
+            <Text style={{ marginTop: 4, color: colors.textSecondary }}>
+              Real-Time Price: ${realtimePrice}
+            </Text>
+          ) : null}
 
           <Text style={{ marginTop: 12, color: colors.textSecondary }}>
             Quantity
@@ -490,43 +519,17 @@ const BuildPortfolio = ({ onBack }) => {
 
 const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '600', marginBottom: 12 },
-  toggle: {
-    padding: 12,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  form: {
-    padding: 12,
-    borderWidth: 1,
-    borderRadius: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 6,
-    padding: 10,
-    marginTop: 6,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  toggle: { padding: 12, borderWidth: 1, borderRadius: 8, marginBottom: 8 },
+  form: { padding: 12, borderWidth: 1, borderRadius: 8 },
+  input: { borderWidth: 1, borderRadius: 6, padding: 10, marginTop: 6 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   inputIconButton: {
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 6,
   },
-  button: {
-    marginTop: 14,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  assetRow: {
-    padding: 10,
-    borderBottomWidth: 1,
-  },
+  button: { marginTop: 14, padding: 12, borderRadius: 8, alignItems: 'center' },
+  assetRow: { padding: 10, borderBottomWidth: 1 },
   resultsPanel: {
     marginTop: 8,
     borderWidth: 1,
