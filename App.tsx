@@ -9,11 +9,18 @@ import { StatusBar, useColorScheme } from 'react-native';
 import { AppProvider } from './src/AppContext';
 import MainScreen from './src/mainscreen';
 import SplashLoading from './src/SplashLoading';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { testConnection } from './api/connectViaAPI';
+import { logCashFlowsToConsole } from './src/services/cashflowFromApi';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    testConnection();
+    logCashFlowsToConsole();
+  }, []);
 
   if (isLoading) {
     return <SplashLoading onComplete={() => setIsLoading(false)} />;

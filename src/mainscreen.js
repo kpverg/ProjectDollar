@@ -27,6 +27,7 @@ const MainScreen = () => {
   const [portfolioValue, setPortfolioValue] = useState(0);
   const [portfolioValueEUR, setPortfolioValueEUR] = useState(0);
   const [costBasis, setCostBasis] = useState(0);
+  const [gainAmountUSD, setGainAmountUSD] = useState(0);
   const [chartPeriod, setChartPeriod] = useState('month');
   const [exchangeRateInverted, setExchangeRateInverted] = useState(false);
   const [portfolioHistory, setPortfolioHistory] = useState([]);
@@ -47,16 +48,29 @@ const MainScreen = () => {
         return;
       }
 
+      const apiAssets = assets.filter(asset => asset.source === 'tradernet');
       const symbols = assets
+        .filter(asset => asset.source !== 'tradernet')
         .map(a => a.symbol?.toUpperCase())
         .filter(sym => sym && sym !== '0' && sym.length > 0);
 
-      if (symbols.length === 0) return;
+      const normalized = {};
+
+      apiAssets.forEach(asset => {
+        const symbol = asset.symbol?.toUpperCase();
+        if (symbol) {
+          normalized[symbol] = Number(asset.price || 0);
+        }
+      });
+
+      if (symbols.length === 0) {
+        setCurrentPrices(normalized);
+        return;
+      }
 
       try {
         const apiPrices = await fetchStockPrices(symbols);
 
-        const normalized = {};
         Object.keys(apiPrices).forEach(sym => {
           normalized[sym.toUpperCase()] = Number(apiPrices[sym]);
         });
@@ -64,6 +78,7 @@ const MainScreen = () => {
         setCurrentPrices(normalized);
       } catch (err) {
         console.error('Stock price fetch failed:', err);
+        setCurrentPrices(normalized);
       }
     };
 
@@ -79,14 +94,31 @@ const MainScreen = () => {
       setPortfolioValue(0);
       setPortfolioValueEUR(0);
       setCostBasis(0);
+      setGainAmountUSD(0);
       return;
     }
 
     if (Object.keys(currentPrices).length === 0) return;
 
     let basis = 0;
+    let gain = 0;
 
     const totalUSD = assets.reduce((sum, asset) => {
+      if (asset.source === 'tradernet') {
+        const value = Number(asset.totalValue ?? 0);
+        const buyPrice = Number(asset.bal_price_a ?? 0);
+        const quantity = toNumber(asset.quantity);
+        const openBalance = Number(asset.open_bal ?? (buyPrice * quantity));
+        basis += Number.isFinite(openBalance) ? openBalance : 0;
+        gain += Number(asset.profit_close ?? 0);
+
+        if (Number.isFinite(value) && value > 0) {
+          return sum + value;
+        }
+        const fallback = Number(asset.price ?? 0) * quantity;
+        return sum + fallback;
+      }
+
       const symbol = asset.symbol?.toUpperCase();
       const apiPrice = Number(currentPrices[symbol]);
       const price = Number.isFinite(apiPrice)
@@ -94,13 +126,16 @@ const MainScreen = () => {
         : toNumber(asset.price);
 
       const purchasePrice = toNumber(asset.price);
+      const quantity = toNumber(asset.quantity);
 
-      basis += purchasePrice * toNumber(asset.quantity);
+      basis += purchasePrice * quantity;
+      gain += (price - purchasePrice) * quantity;
 
-      return sum + price * toNumber(asset.quantity);
+      return sum + price * quantity;
     }, 0);
 
     setCostBasis(basis);
+    setGainAmountUSD(gain);
     setPortfolioValue(totalUSD);
 
     convertUSDToEUR(totalUSD)
@@ -145,8 +180,23 @@ const MainScreen = () => {
   const prepareStockData = () => {
     return assets.map(asset => {
       const symbol = asset.symbol?.toUpperCase();
-      const price = Number(currentPrices[symbol]) || toNumber(asset.price);
 
+      if (asset.source === 'tradernet') {
+        const valueUSD = Number(asset.totalValue ?? 0);
+        const valueEUR =
+          portfolioValue > 0
+            ? (valueUSD / portfolioValue) * portfolioValueEUR
+            : 0;
+
+        return {
+          symbol,
+          name: asset.name,
+          valueUSD,
+          valueEUR,
+        };
+      }
+
+      const price = Number(currentPrices[symbol]) || toNumber(asset.price);
       const valueUSD = price * toNumber(asset.quantity);
       const valueEUR =
         portfolioValue > 0
@@ -199,6 +249,7 @@ const MainScreen = () => {
             portfolioValue > 0 ? portfolioValueEUR / portfolioValue : 0
           }
           costBasis={costBasis}
+          gainAmountUSD={gainAmountUSD}
           portfolioValueUSD={portfolioValue}
         />
 

@@ -189,6 +189,9 @@ const ViewPortfolio = ({ onBack }) => {
 
   // Calculate portfolio stats
   const totalValue = assets.reduce((sum, asset) => {
+    if (asset.source === 'tradernet') {
+      return sum + Number(asset.totalValue || 0);
+    }
     return sum + parseFloat(asset.totalValue || 0);
   }, 0);
 
@@ -204,6 +207,28 @@ const ViewPortfolio = ({ onBack }) => {
 
   // Calculate gain/loss for an asset
   const calculateGainLoss = asset => {
+    if (asset.source === 'tradernet') {
+      const currentPrice = Number(asset.mkt_price ?? asset.marketPrice ?? asset.currentPrice ?? asset.price ?? 0);
+      const buyPrice = Number(asset.bal_price_a ?? asset.buyPrice ?? 0);
+      const profitClose = Number(asset.profit_close ?? 0);
+      const openBalance = Number(asset.open_bal ?? (buyPrice * Number(asset.quantity || 0)) ?? 0);
+      const gainLossPercent = openBalance > 0
+        ? ((profitClose / openBalance) * 100).toFixed(2)
+        : buyPrice > 0
+          ? (((currentPrice - buyPrice) / buyPrice) * 100).toFixed(2)
+          : '0.00';
+
+      const gainLoss = profitClose || ((currentPrice - buyPrice) * Number(asset.quantity || 0));
+
+      return {
+        currentValue: currentPrice.toFixed(2),
+        buyPrice: buyPrice.toFixed(2),
+        gainLoss: Number(gainLoss).toFixed(2),
+        gainLossPercent,
+        isPositive: Number(gainLossPercent) >= 0,
+      };
+    }
+
     const currentPrice = currentPrices[asset.symbol];
     if (!currentPrice) return null;
 
@@ -369,12 +394,16 @@ const ViewPortfolio = ({ onBack }) => {
                         { color: dynamicColors.textSecondary },
                       ]}
                     >
-                      Buy Price
+                      Current
                     </Text>
                     <Text
                       style={[styles.statValue, { color: dynamicColors.text }]}
                     >
-                      ${asset.price}
+                      ${
+                        asset.source === 'tradernet'
+                          ? (Number(asset.mkt_price ?? asset.marketPrice ?? asset.currentPrice ?? 0)).toFixed(2)
+                          : (Number(currentPrices[asset.symbol] ?? 0)).toFixed(2)
+                      }
                     </Text>
                   </View>
                   <View style={styles.statItem}>
@@ -384,112 +413,95 @@ const ViewPortfolio = ({ onBack }) => {
                         { color: dynamicColors.textSecondary },
                       ]}
                     >
-                      Current
+                      Buy Price
                     </Text>
                     <Text
                       style={[styles.statValue, { color: dynamicColors.text }]}
                     >
-                      {currentPrices[asset.symbol]
-                        ? `$${currentPrices[asset.symbol].toFixed(2)}`
-                        : '...'}
+                      ${
+                        asset.source === 'tradernet'
+                          ? (Number(asset.bal_price_a ?? asset.buyPrice ?? 0)).toFixed(2)
+                          : (Number(asset.price ?? 0)).toFixed(2)
+                      }
                     </Text>
                   </View>
-                </View>
-
-                <View style={styles.gainsRow}>
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.statItem}>
                     <Text
                       style={[
                         styles.statLabel,
                         { color: dynamicColors.textSecondary },
                       ]}
                     >
-                      Initial Value
+                      Return %
                     </Text>
                     <Text
-                      style={[styles.statValue, { color: dynamicColors.text }]}
+                      style={[
+                        styles.statValue,
+                        {
+                          color: asset.source === 'tradernet'
+                            ? (Number(calculateGainLoss(asset)?.gainLossPercent || 0) >= 0 ? '#22c55e' : '#dc2626')
+                            : '#22c55e',
+                          fontWeight: '700',
+                        },
+                      ]}
                     >
-                      ${asset.totalValue}
+                      {asset.source === 'tradernet'
+                        ? `${Number(calculateGainLoss(asset)?.gainLossPercent || 0) >= 0 ? '+' : ''}${calculateGainLoss(asset)?.gainLossPercent}%`
+                        : `${calculateGainLoss(asset)?.isPositive ? '+' : ''}${calculateGainLoss(asset)?.gainLossPercent}%`}
                     </Text>
                   </View>
-                  {currentPrices[asset.symbol] ? (
-                    <>
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            styles.statLabel,
-                            { color: dynamicColors.textSecondary },
-                          ]}
-                        >
-                          Current Value
-                        </Text>
-                        <Text
-                          style={[
-                            styles.statValue,
-                            { color: dynamicColors.text },
-                          ]}
-                        >
-                          ${calculateGainLoss(asset)?.currentValue}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            styles.statLabel,
-                            { color: dynamicColors.textSecondary },
-                          ]}
-                        >
-                          Gain/Loss
-                        </Text>
-                        <Text
-                          style={[
-                            styles.statValue,
-                            {
-                              color: calculateGainLoss(asset)?.isPositive
-                                ? '#22c55e'
-                                : '#dc2626',
-                              fontWeight: '700',
-                            },
-                          ]}
-                        >
-                          {calculateGainLoss(asset)?.isPositive ? '+' : ''}$
-                          {calculateGainLoss(asset)?.gainLoss}
-                        </Text>
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={[
-                            styles.statLabel,
-                            { color: dynamicColors.textSecondary },
-                          ]}
-                        >
-                          Return %
-                        </Text>
-                        <Text
-                          style={[
-                            styles.statValue,
-                            {
-                              color: calculateGainLoss(asset)?.isPositive
-                                ? '#22c55e'
-                                : '#dc2626',
-                              fontWeight: '700',
-                            },
-                          ]}
-                        >
-                          {calculateGainLoss(asset)?.isPositive ? '+' : ''}
-                          {calculateGainLoss(asset)?.gainLossPercent}%
-                        </Text>
-                      </View>
-                    </>
-                  ) : (
-                    <View style={{ flex: 3, justifyContent: 'center' }}>
-                      <ActivityIndicator
-                        size="small"
-                        color={dynamicColors.primary}
-                      />
-                    </View>
-                  )}
                 </View>
+
+                {currentPrices[asset.symbol] ? (
+                  <View style={styles.gainsRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.statLabel,
+                          { color: dynamicColors.textSecondary },
+                        ]}
+                      >
+                        Current Value
+                      </Text>
+                      <Text
+                        style={[styles.statValue, { color: dynamicColors.text }]}
+                      >
+                        ${calculateGainLoss(asset)?.currentValue}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={[
+                          styles.statLabel,
+                          { color: dynamicColors.textSecondary },
+                        ]}
+                      >
+                        Gain/Loss
+                      </Text>
+                      <Text
+                        style={[
+                          styles.statValue,
+                          {
+                            color: calculateGainLoss(asset)?.isPositive
+                              ? '#22c55e'
+                              : '#dc2626',
+                            fontWeight: '700',
+                          },
+                        ]}
+                      >
+                        {calculateGainLoss(asset)?.isPositive ? '+' : ''}$
+                        {calculateGainLoss(asset)?.gainLoss}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ marginTop: 8, justifyContent: 'center' }}>
+                    <ActivityIndicator
+                      size="small"
+                      color={dynamicColors.primary}
+                    />
+                  </View>
+                )}
                 {asset.purchaseDate && (
                   <Text
                     style={[

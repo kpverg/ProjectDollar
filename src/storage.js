@@ -46,10 +46,6 @@ export const saveBalances = async balances => {
   return saveState({ balances: { ...balances } });
 };
 
-export const saveAssets = async assets => {
-  return saveState({ assets: Array.isArray(assets) ? assets : [] });
-};
-
 export const getPreferences = async () => {
   const s = await loadState();
   return s.preferences || {};
@@ -61,6 +57,5 @@ export const getBalances = async () => {
 };
 
 export const getAssets = async () => {
-  const s = await loadState();
-  return s.assets || [];
+  return [];
 };

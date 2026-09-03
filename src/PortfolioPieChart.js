@@ -19,6 +19,7 @@ const PortfolioPieChart = ({
   totalValueEUR,
   exchangeRate,
   costBasis,
+  gainAmountUSD,
   portfolioValueUSD,
 }) => {
   if (!stocks || stocks.length === 0) {
@@ -37,7 +38,7 @@ const PortfolioPieChart = ({
   );
 
   const basisUSD = costBasis || 0;
-  const gainUSD = totalValue - basisUSD;
+  const gainUSD = gainAmountUSD ?? (totalValue - basisUSD);
   const gainPct = basisUSD > 0 ? (gainUSD / basisUSD) * 100 : 0;
 
   const totalDisplay = currencyMode === 'EUR' ? totalValueEUR || 0 : totalValue;

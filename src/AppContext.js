@@ -1,5 +1,6 @@
 import React, { createContext, useEffect, useState } from 'react';
-import { getPreferences, savePreferences, getAssets } from './storage';
+import { getPreferences, savePreferences } from './storage';
+import { loadPortfolioAssetsFromApi } from './services/stocksFromApi';
 
 export const AppContext = createContext();
 
@@ -31,9 +32,8 @@ export const AppProvider = ({ children }) => {
       if (prefs.dateFormat) setDateFormat(prefs.dateFormat);
       if (prefs.primaryColor) setPrimaryColor(prefs.primaryColor);
 
-      // Load assets
-      const storedAssets = await getAssets();
-      if (Array.isArray(storedAssets)) setAssets(storedAssets);
+      const apiAssets = await loadPortfolioAssetsFromApi();
+      setAssets(Array.isArray(apiAssets) ? apiAssets : []);
     })();
   }, []);
 
